@@ -32,6 +32,7 @@ Finally, you will use an AI agent to add a new feature to the front-end.
     - [1.5.2. Verify in the dev server](#152-verify-in-the-dev-server)
     - [1.5.3. Deploy the change to the VM](#153-deploy-the-change-to-the-vm)
   - [1.6. Finish the task](#16-finish-the-task)
+  - [1.7. Check the task using the autochecker](#17-check-the-task-using-the-autochecker)
 - [2. Acceptance criteria](#2-acceptance-criteria)
 
 ## 1. Steps
@@ -360,6 +361,10 @@ Title: `[Task] Add Front-end`
    In the PR description, include a screenshot of the front-end table with the type filter in use (a type selected, rows filtered).
 
 2. [Get a PR review](../../../wiki/git-workflow.md#get-a-pr-review) and complete the subsequent steps in the `Git workflow`.
+
+### 1.7. Check the task using the autochecker
+
+[Check the task using the autochecker `Telegram` bot](../../../wiki/autochecker.md#check-the-task-using-the-autochecker-bot).
 
 ---
 

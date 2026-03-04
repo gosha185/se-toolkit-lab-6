@@ -39,6 +39,7 @@
   - [1.15. (UPD) Stop the services](#115-upd-stop-the-services)
   - [1.16. Set up the autochecker](#116-set-up-the-autochecker)
   - [1.17. (UPD) Set up a coding agent](#117-upd-set-up-a-coding-agent)
+  - [1.18. Check the setup using the autochecker](#118-check-the-setup-using-the-autochecker)
 - [2. Optional steps](#2-optional-steps)
   - [2.1. (UPD) Set up `Nix`](#21-upd-set-up-nix)
   - [2.2. (UPD) Set up `direnv`](#22-upd-set-up-direnv)
@@ -419,6 +420,10 @@ A coding agent can help you write code, explain concepts, and debug issues.
 
 - Method 1: [Set up a `Qwen Code`-based agent](../../wiki/coding-agents.md#set-up-qwen-code-based-agent).
 - Method 2: [Choose another coding agent](../../wiki/coding-agents.md#choose-a-coding-agent).
+
+### 1.18. Check the setup using the autochecker
+
+[Check the task using the autochecker `Telegram` bot](../../../wiki/autochecker.md#check-the-task-using-the-autochecker-bot).
 
 ---
 
