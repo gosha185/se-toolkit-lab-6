@@ -127,6 +127,85 @@ def list_files(path: str) -> str:
         return f"Error: Cannot list directory: {e}"
 
 
+def get_api_config() -> tuple[str, str | None]:
+    """
+    Get API configuration from environment variables.
+
+    Returns:
+        Tuple of (base_url, api_key). api_key may be None if not set.
+    """
+    base_url = os.environ.get("AGENT_API_BASE_URL", "http://localhost:42002")
+    api_key = os.environ.get("LMS_API_KEY")
+    return base_url, api_key
+
+
+def query_api(method: str, path: str, body: str | None = None) -> str:
+    """
+    Call the backend API with authentication.
+
+    Args:
+        method: HTTP method (GET, POST, PUT, DELETE, etc.)
+        path: API path (e.g., '/items/', '/analytics/completion-rate')
+        body: Optional JSON request body for POST/PUT requests
+
+    Returns:
+        JSON string with status_code and body, or error message.
+    """
+    base_url, api_key = get_api_config()
+
+    # Normalize path
+    if not path.startswith("/"):
+        path = f"/{path}"
+
+    url = f"{base_url}{path}"
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+
+    # Add API key for authentication
+    if api_key:
+        headers["X-API-Key"] = api_key
+
+    print(f"Querying API: {method} {url}", file=sys.stderr)
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            if method.upper() == "GET":
+                response = client.get(url, headers=headers)
+            elif method.upper() == "POST":
+                response = client.post(url, headers=headers, content=body or "{}")
+            elif method.upper() == "PUT":
+                response = client.put(url, headers=headers, content=body or "{}")
+            elif method.upper() == "DELETE":
+                response = client.delete(url, headers=headers)
+            elif method.upper() == "PATCH":
+                response = client.patch(url, headers=headers, content=body or "{}")
+            else:
+                return f"Error: Unsupported HTTP method '{method}'"
+
+            # Build response object
+            result = {
+                "status_code": response.status_code,
+                "body": response.text,
+            }
+
+            # Try to parse body as JSON for cleaner output
+            try:
+                result["body"] = response.json()
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+            return json.dumps(result, ensure_ascii=False)
+
+    except httpx.TimeoutException:
+        return json.dumps({"error": "API request timed out (30s limit)"})
+    except httpx.ConnectError as e:
+        return json.dumps({"error": f"Cannot connect to API at {base_url}: {e}"})
+    except httpx.HTTPError as e:
+        return json.dumps({"error": f"HTTP error: {e}"})
+
+
 # Tool definitions for LLM function calling
 TOOLS = [
     {
@@ -163,6 +242,31 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_api",
+            "description": "Call the backend API to get real-time data from the running system. Use this for questions about database state, API behavior, status codes, or runtime errors.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "method": {
+                        "type": "string",
+                        "description": "HTTP method (GET, POST, PUT, DELETE, etc.)",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "API path (e.g., '/items/', '/analytics/completion-rate')",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Optional JSON request body for POST/PUT requests",
+                    },
+                },
+                "required": ["method", "path"],
+            },
+        },
+    },
 ]
 
 
@@ -171,7 +275,7 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
     Execute a tool and return its result.
 
     Args:
-        name: Tool name ('read_file' or 'list_files')
+        name: Tool name ('read_file', 'list_files', or 'query_api')
         arguments: Tool arguments as a dict
 
     Returns:
@@ -183,6 +287,11 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
     elif name == "list_files":
         path = arguments.get("path", "")
         return list_files(str(path))
+    elif name == "query_api":
+        method = arguments.get("method", "GET")
+        path = arguments.get("path", "")
+        body = arguments.get("body")
+        return query_api(str(method), str(path), body)
     else:
         return f"Error: Unknown tool '{name}'"
 
@@ -302,14 +411,27 @@ def run_agentic_loop(question: str, config: dict[str, Any]) -> dict[str, Any]:
     """
     # System prompt instructing the LLM how to use tools
     system_prompt = (
-        "You are a documentation agent with access to the project wiki. "
-        "You have two tools: 'list_files' to discover files in directories, and 'read_file' to read file contents. "
-        "Use these tools to find and read relevant documentation files. "
-        "Always include the source reference (file path with optional section anchor like 'wiki/file.md#section'). "
+        "You are a system agent with access to three types of tools:\n\n"
+        "1. WIKI TOOLS (list_files, read_file): Use these to read documentation from the wiki/ directory.\n"
+        "2. SOURCE CODE (read_file): Use this to read Python source files, configuration files, etc.\n"
+        "3. LIVE API (query_api): Use this to query the running backend API for real-time data.\n\n"
+        "WHEN TO USE query_api:\n"
+        "- Questions about current database state (e.g., 'how many items are in the database')\n"
+        "- Questions about API behavior (e.g., 'what status code does the API return')\n"
+        "- Questions about runtime errors (e.g., 'query this endpoint to see the error')\n\n"
+        "WHEN TO USE read_file:\n"
+        "- Documentation questions (wiki/ files)\n"
+        "- Code analysis (backend/, agent.py, etc.)\n"
+        "- Configuration files (docker-compose.yml, Dockerfile, etc.)\n\n"
+        "WHEN TO USE list_files:\n"
+        "- Discovering what files exist in a directory\n"
+        "- Exploring the project structure\n\n"
+        "IMPORTANT: For wiki/documentation questions, include the source reference (file path with optional section anchor like 'wiki/file.md#section'). "
+        "For API or source code questions, the source field is optional.\n\n"
         "When you have found the answer, respond with a JSON object containing:\n"
         '  - "answer": your final answer as a string\n'
-        '  - "source": the wiki file path with optional section anchor (e.g., "wiki/git-workflow.md#resolving-merge-conflicts")\n'
-        "Do not make up file paths. Only reference files you have actually read using read_file."
+        '  - "source": the wiki file path with optional section anchor (e.g., "wiki/git-workflow.md#resolving-merge-conflicts"), or empty string for API/source questions\n'
+        "Do not make up file paths or API endpoints. Only reference files and endpoints you have actually read or queried."
     )
 
     # Initialize conversation
